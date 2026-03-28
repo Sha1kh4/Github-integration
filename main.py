@@ -80,7 +80,13 @@ async def create_issue(token: Annotated[str, Depends(oauth2_scheme)], title: str
     async with httpx.AsyncClient() as client:
         response = await client.post(url, headers=headers, json={"title": title, "body": body, "labels": [label]})
     if response.status_code != 201:
-        return {"message": "Failed to create issue", "code": response.json()}
+        raise HTTPException(
+            status_code=response.status_code,
+            detail={
+                "message": "Failed to create issue",
+                "error": response.json()
+            }
+        )
     
     data = {
         "title": title,
@@ -117,7 +123,13 @@ async def get_commits(token: Annotated[str, Depends(oauth2_scheme)], reponame: s
     async with httpx.AsyncClient() as client:
         response = await client.get(url, headers=headers)
     if response.status_code != 200:
-        return {"message": "Failed to get commits", "code": response.json()}
+        raise HTTPException(
+            status_code=response.status_code,
+            detail={
+                "message": "Failed to get commits",
+                "error": response.json()
+            }
+        )
     
     return response.json()
 
