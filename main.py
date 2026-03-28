@@ -17,7 +17,7 @@ async def root():
 
 @app.get("/github")
 async def github_login(request: Request):
-    return RedirectResponse(url=f"https://github.com/login/oauth/authorize?client_id={os.getenv('Client_ID')}&redirect_uri={request.base_url}callback&scope=read:user",status_code=302)
+    return RedirectResponse(url=f"https://github.com/login/oauth/authorize?client_id={os.getenv('Client_ID')}&redirect_uri={request.base_url}callback&scope=repo&state=123",status_code=302)
 
 @app.get("/callback")
 async def github_callback(code: str = None, error: str = None,error_description: str = None):
