@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Request ,Depends
+from fastapi import FastAPI, Request ,Depends,HTTPException
 from fastapi.security import OAuth2PasswordBearer
 import os
 from dotenv import load_dotenv
@@ -28,7 +28,13 @@ async def github_callback(code: str = None, error: str = None,error_description:
     async with httpx.AsyncClient() as client:
         response = await client.get(url, headers=headers)
         if response.status_code != 200:
-            return {"message": "Failed to get access token", "code": response.status_code}
+            raise HTTPException(
+                status_code=response.status_code,
+                detail={
+                    "message": "Failed to get access token",
+                    "error": response.json()
+                }
+            )
     return {"message": "GitHub token received", "code": response.text}
 
 
@@ -45,7 +51,13 @@ async def me(token: Annotated[str, Depends(oauth2_scheme)]):
     async with httpx.AsyncClient() as client:
         response = await client.get(url, headers=headers)
     if response.status_code != 200:
-        return {"message": "Failed to get user data", "code": response.status_code}
+        raise HTTPException(
+            status_code=response.status_code,
+            detail={
+                "message": "Failed to get user data",
+                "error": response.json()
+            }
+        )
     
     data = {
         "username": response.json()["login"],
