@@ -1,10 +1,19 @@
-from fastapi import FastAPI, Request ,Depends,HTTPException
+from fastapi import FastAPI, Request, Depends, HTTPException
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 import os
 from dotenv import load_dotenv
 from starlette.responses import RedirectResponse
 import httpx
-from typing import Annotated
+
+from models import (
+    TokenResponse,
+    UserResponse,
+    CreateIssueRequest,
+    IssueResponse,
+    CreatePullRequestRequest,
+    PullRequestResponse
+)
+
 load_dotenv()
 
 app = FastAPI()
@@ -18,8 +27,8 @@ async def root():
 async def github_login(request: Request):
     return RedirectResponse(url=f"https://github.com/login/oauth/authorize?client_id={os.getenv('Client_ID')}&redirect_uri={request.base_url}callback&scope=repo&state=123",status_code=302)
 
-@app.get("/callback")
-async def github_callback(code: str = None, error: str = None,error_description: str = None):
+@app.get("/callback", response_model=TokenResponse)
+async def github_callback(code: str = None, error: str = None, error_description: str = None):
     if error:
         return {"message": f"Error: {error_description}"}
     url = f"https://github.com/login/oauth/access_token?client_id={os.getenv('Client_ID')}&client_secret={os.getenv('Client_secrets')}&code={code}"
@@ -38,10 +47,9 @@ async def github_callback(code: str = None, error: str = None,error_description:
 
     return response["access_token"]
 
-@app.get("/me")
-async def me(credentials: HTTPAuthorizationCredentials = Depends(security)):    
+@app.get("/me", response_model=UserResponse)
+async def me(credentials: HTTPAuthorizationCredentials = Depends(security)):
     token = credentials.credentials
-    url = "https://api.github.com/user"
 
     headers = {
         "Accept": "application/vnd.github+json",
@@ -50,7 +58,7 @@ async def me(credentials: HTTPAuthorizationCredentials = Depends(security)):
     }
 
     async with httpx.AsyncClient() as client:
-        response = await client.get(url, headers=headers)
+        response = await client.get("https://api.github.com/user", headers=headers)
     if response.status_code != 200:
         raise HTTPException(
             status_code=response.status_code,
@@ -69,36 +77,40 @@ async def me(credentials: HTTPAuthorizationCredentials = Depends(security)):
     }
     return data
 
-@app.get("/create-issue")
-async def create_issue(title: str, body: str,reponame: str,credentials: HTTPAuthorizationCredentials = Depends(security),label : str = "bug"):
+@app.post("/create-issue", response_model=IssueResponse)
+async def create_issue(
+    payload: CreateIssueRequest,
+    credentials: HTTPAuthorizationCredentials = Depends(security)
+):
     token = credentials.credentials
-    url = f"https://api.github.com/repos/{reponame}/issues"
+    url = f"https://api.github.com/repos/{payload.reponame}/issues"
     headers = {
         "Accept": "application/vnd.github+json",
         "Authorization": f"Bearer {token}",
         "X-GitHub-Api-Version": "2026-03-10"
     }
 
-    async with httpx.AsyncClient() as client:
-        response = await client.post(url, headers=headers, json={"title": title, "body": body, "labels": [label]})
-    if response.status_code != 201:
-        raise HTTPException(
-            status_code=response.status_code,
-            detail={
-                "message": "Failed to create issue",
-                "error": response.json()
-            }
-        )
-    
-    data = {
-        "title": title,
-        "body": body,
-        "labels": label
+    body = {
+        "title": payload.title,
+        "body": payload.body,
+        "labels": [payload.label]
     }
-    return data,response.json()
+
+    async with httpx.AsyncClient() as client:
+        response = await client.post(url, headers=headers, json=body)
+    if response.status_code != 201:
+        raise HTTPException(status_code=response.status_code, detail=response.json())
+    return {
+        "title": payload.title,
+        "body": payload.body,
+        "labels": [payload.label]
+    }
 
 @app.get("/get-issues")
-async def get_issues( reponame: str,credentials: HTTPAuthorizationCredentials = Depends(security)):
+async def get_issues(
+    reponame: str,
+    credentials: HTTPAuthorizationCredentials = Depends(security)
+):
     token = credentials.credentials
     url = f"https://api.github.com/repos/{reponame}/issues"
     headers = {
@@ -109,15 +121,21 @@ async def get_issues( reponame: str,credentials: HTTPAuthorizationCredentials = 
 
     async with httpx.AsyncClient() as client:
         response = await client.get(url, headers=headers)
+
     if response.status_code != 200:
-        return {"message": "Failed to get issues", "code": response.json()}
+        raise HTTPException(status_code=response.status_code, detail=response.json())
 
     return response.json()
 
 @app.get("/get-commits")
-async def get_commits( reponame: str,credentials: HTTPAuthorizationCredentials = Depends(security)):
+async def get_commits(
+    reponame: str,
+    credentials: HTTPAuthorizationCredentials = Depends(security)
+):
     token = credentials.credentials
+
     url = f"https://api.github.com/repos/{reponame}/commits"
+
     headers = {
         "Accept": "application/vnd.github+json",
         "Authorization": f"Bearer {token}",
@@ -126,37 +144,46 @@ async def get_commits( reponame: str,credentials: HTTPAuthorizationCredentials =
 
     async with httpx.AsyncClient() as client:
         response = await client.get(url, headers=headers)
+
     if response.status_code != 200:
-        raise HTTPException(
-            status_code=response.status_code,
-            detail={
-                "message": "Failed to get commits",
-                "error": response.json()
-            }
-        )
-    
+        raise HTTPException(status_code=response.status_code, detail=response.json())
+
     return response.json()
 
-@app.get("/crete-pull-request")
-async def crete_pull_request( title: str, body: str,reponame: str,branch : str ,base : str = "main",credentials: HTTPAuthorizationCredentials = Depends(security)):
+@app.post("/create-pull-request", response_model=PullRequestResponse)
+async def create_pull_request(
+    payload: CreatePullRequestRequest,
+    credentials: HTTPAuthorizationCredentials = Depends(security)
+):
     token = credentials.credentials
-    url = f"https://api.github.com/repos/{reponame}/pulls"
+
+    url = f"https://api.github.com/repos/{payload.reponame}/pulls"
+
     headers = {
         "Accept": "application/vnd.github+json",
         "Authorization": f"Bearer {token}",
         "X-GitHub-Api-Version": "2026-03-10"
     }
-    print(f"https://api.github.com/repos/{reponame}/pulls")
-    print(headers)
-    print(title,body,branch,base)
+
+    body = {
+        "title": payload.title,
+        "body": payload.body,
+        "head": payload.branch,
+        "base": payload.base
+    }
+
     async with httpx.AsyncClient() as client:
-        response = await client.post(url, headers=headers, json={"title": title, "body": body, "head": f"{branch}", "base": base})
+        response = await client.post(url, headers=headers, json=body)
+
     if response.status_code != 201:
-        raise HTTPException(
-            status_code=response.status_code,
-            detail={
-                "message": "Failed to create pull request",
-                "error": response.json()
-            }
-        )
-    return response.json()
+        raise HTTPException(status_code=response.status_code, detail=response.json())
+
+    pr = response.json()
+
+    return {
+        "id": pr["id"],
+        "title": pr["title"],
+        "body": pr.get("body"),
+        "state": pr["state"],
+        "html_url": pr["html_url"]
+    }
