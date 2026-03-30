@@ -23,11 +23,11 @@ security = HTTPBearer()
 async def root():
     return {"message": "Hello World"}
 
-@app.get("/github")
+@app.get("/github",tags=["Auth"])
 async def github_login(request: Request):
     return RedirectResponse(url=f"https://github.com/login/oauth/authorize?client_id={os.getenv('Client_ID')}&redirect_uri={request.base_url}callback&scope=repo&state=123",status_code=302)
 
-@app.get("/callback", response_model=TokenResponse)
+@app.get("/callback", response_model=TokenResponse,tags=["Auth"])
 async def github_callback(code: str = None, error: str = None, error_description: str = None):
     if error:
         return {"message": f"Error: {error_description}"}
@@ -44,10 +44,12 @@ async def github_callback(code: str = None, error: str = None, error_description
                 }
             )
     response = response.json()
+    if "error" in response:
+        raise HTTPException(status_code=400, detail=response["error_description"])
+    else:
+        return response
 
-    return response["access_token"]
-
-@app.get("/me", response_model=UserResponse)
+@app.get("/me", response_model=UserResponse,tags=["Auth"])
 async def me(credentials: HTTPAuthorizationCredentials = Depends(security)):
     token = credentials.credentials
 
@@ -77,7 +79,7 @@ async def me(credentials: HTTPAuthorizationCredentials = Depends(security)):
     }
     return data
 
-@app.post("/create-issue", response_model=IssueResponse)
+@app.post("/create-issue", response_model=IssueResponse,tags=["Issues"])
 async def create_issue(
     payload: CreateIssueRequest,
     credentials: HTTPAuthorizationCredentials = Depends(security)
@@ -106,7 +108,7 @@ async def create_issue(
         "labels": [payload.label]
     }
 
-@app.get("/get-issues")
+@app.get("/get-issues",tags=["Issues"])
 async def get_issues(
     reponame: str,
     credentials: HTTPAuthorizationCredentials = Depends(security)
@@ -127,7 +129,7 @@ async def get_issues(
 
     return response.json()
 
-@app.get("/get-commits")
+@app.get("/get-commits",tags=["Commits"])
 async def get_commits(
     reponame: str,
     credentials: HTTPAuthorizationCredentials = Depends(security)
@@ -150,7 +152,7 @@ async def get_commits(
 
     return response.json()
 
-@app.post("/create-pull-request", response_model=PullRequestResponse)
+@app.post("/create-pull-request", response_model=PullRequestResponse,tags=["Pull Requests"])
 async def create_pull_request(
     payload: CreatePullRequestRequest,
     credentials: HTTPAuthorizationCredentials = Depends(security)
