@@ -1,15 +1,14 @@
 from fastapi import FastAPI, Request ,Depends,HTTPException
-from fastapi.security import OAuth2PasswordBearer
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 import os
 from dotenv import load_dotenv
 from starlette.responses import RedirectResponse
 import httpx
-
+from typing import Annotated
 load_dotenv()
 
 app = FastAPI()
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
-
+security = HTTPBearer()
 
 @app.get("/")
 async def root():
@@ -35,11 +34,13 @@ async def github_callback(code: str = None, error: str = None,error_description:
                     "error": response.json()
                 }
             )
-    return {"message": "GitHub token received", "code": response.text}
+    response = response.json()
 
+    return response["access_token"]
 
 @app.get("/me")
-async def me(token: Annotated[str, Depends(oauth2_scheme)]):
+async def me(credentials: HTTPAuthorizationCredentials = Depends(security)):    
+    token = credentials.credentials
     url = "https://api.github.com/user"
 
     headers = {
@@ -69,7 +70,8 @@ async def me(token: Annotated[str, Depends(oauth2_scheme)]):
     return data
 
 @app.get("/create-issue")
-async def create_issue(token: Annotated[str, Depends(oauth2_scheme)], title: str, body: str,reponame: str,label : str = "bug"):
+async def create_issue(title: str, body: str,reponame: str,credentials: HTTPAuthorizationCredentials = Depends(security),label : str = "bug"):
+    token = credentials.credentials
     url = f"https://api.github.com/repos/{reponame}/issues"
     headers = {
         "Accept": "application/vnd.github+json",
@@ -96,7 +98,8 @@ async def create_issue(token: Annotated[str, Depends(oauth2_scheme)], title: str
     return data,response.json()
 
 @app.get("/get-issues")
-async def get_issues(token: Annotated[str, Depends(oauth2_scheme)], reponame: str):
+async def get_issues( reponame: str,credentials: HTTPAuthorizationCredentials = Depends(security)):
+    token = credentials.credentials
     url = f"https://api.github.com/repos/{reponame}/issues"
     headers = {
         "Accept": "application/vnd.github+json",
@@ -112,7 +115,8 @@ async def get_issues(token: Annotated[str, Depends(oauth2_scheme)], reponame: st
     return response.json()
 
 @app.get("/get-commits")
-async def get_commits(token: Annotated[str, Depends(oauth2_scheme)], reponame: str):
+async def get_commits( reponame: str,credentials: HTTPAuthorizationCredentials = Depends(security)):
+    token = credentials.credentials
     url = f"https://api.github.com/repos/{reponame}/commits"
     headers = {
         "Accept": "application/vnd.github+json",
@@ -134,7 +138,8 @@ async def get_commits(token: Annotated[str, Depends(oauth2_scheme)], reponame: s
     return response.json()
 
 @app.get("/crete-pull-request")
-async def crete_pull_request(token: Annotated[str, Depends(oauth2_scheme)], title: str, body: str,reponame: str,branch : str ,base : str = "main"):
+async def crete_pull_request( title: str, body: str,reponame: str,branch : str ,base : str = "main",credentials: HTTPAuthorizationCredentials = Depends(security)):
+    token = credentials.credentials
     url = f"https://api.github.com/repos/{reponame}/pulls"
     headers = {
         "Accept": "application/vnd.github+json",
